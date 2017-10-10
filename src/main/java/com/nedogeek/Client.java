@@ -4,14 +4,13 @@ package com.nedogeek;
 import org.eclipse.jetty.websocket.*;
 import org.json.JSONArray;
 import org.json.JSONObject;
-import sun.util.resources.cldr.rwk.CalendarData_rwk_TZ;
 
 import java.io.IOException;
 import java.net.URI;
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 
@@ -22,11 +21,11 @@ public class Client {
     private static final String SERVER = "ws://10.22.40.111:8080/ws";
     private org.eclipse.jetty.websocket.WebSocket.Connection connection;
 
-    enum Commands {
+    private enum Commands {
         Check, Call, Rise, Fold, AllIn
     }
 
-    class Card {
+    private class Card {
         final String suit;
         final String value;
 
@@ -70,7 +69,7 @@ public class Client {
         }
     }
 
-    class Player {
+    private class Player {
 
         final String name;
         final int balance;
@@ -88,24 +87,34 @@ public class Client {
 
     }
 
-    List<Card> deskCards;
+    private List<Card> deskCards;
 
-    int pot;
-    String gameRound;
+    private int pot;
+    private String gameRound;
 
-    String dealer;
-    String mover;
-    List<String> event;
-    List<Player> players;
+    private String dealer;
+    private String mover;
+    private List<String> event;
+    private List<Player> players;
 
-    String cardCombination;
+    private String cardCombination;
 
-    public Client() {
+    private Client() {
         con();
     }
 
     public static void main(String[] args) {
         new Client();
+//        ArrayList<String> cards = new ArrayList<>();
+//
+//        cards.add("7");
+//        cards.add("3");
+//        cards.add("9");
+//        cards.add("Q");
+//        cards.add("5");
+//        cards.add("A");
+////       cards.add("4");
+//        System.out.println(sequentialCards(cards));
     }
 
     private void parseMessage(String message) {
@@ -196,51 +205,7 @@ public class Client {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    boolean hasEveryonesTurnBeen = false;
+    private boolean hasEveryonesTurnBeen = false;
 
     private void doAnswer(String message) throws IOException {
 
@@ -258,6 +223,13 @@ public class Client {
             counter++;
         }
 
+        int bigBlind = 0;
+        for (Player p : players) {
+            if (p.status.equals("BigBlind")) {
+                bigBlind = p.bet;
+            }
+        }
+
         if (gameRound.equals("BLIND")) {
             PreFlop(card1, card2);
         }
@@ -267,35 +239,19 @@ public class Client {
         }
 
         if (gameRound.equals("FOUR_CARDS")) {
-            Turn();
+            Turn(card1, card2, bigBlind);
         }
 
         if (gameRound.equals("FIVE_CARDS")) {
-            River();
+            River(card1, card2, bigBlind);
         }
         if (gameRound.equals("FINAL")) {
-            if (cardCombination.contains("Pair of")) {
-                //TODO
-                connection.sendMessage(Commands.Rise.toString() + ",50");
-            } else if (cardCombination.contains("Two pairs")) {
-                //TODO
-                connection.sendMessage(Commands.Rise.toString() + ",50");
-            } else if (cardCombination.contains("Set of")) {
-                connection.sendMessage(Commands.AllIn.toString());
-            } else if (cardCombination.contains("Straight")) {
-                connection.sendMessage(Commands.AllIn.toString());
-            } else if (cardCombination.contains("Flash")) {
-                connection.sendMessage(Commands.AllIn.toString());
-            } else if (cardCombination.contains("Full house")) {
-                connection.sendMessage(Commands.AllIn.toString());
-            } else if (cardCombination.contains("High card")) {
-                connection.sendMessage(Commands.Check.toString());
-            }
+            Final(card1, card2, bigBlind);
         }
 
     }
 
-    Player myPlayer() {
+    private Player myPlayer() {
         //my player
         Player myPlayer = null;
         for (Player player : players) {
@@ -307,59 +263,89 @@ public class Client {
         return myPlayer;
     }
 
-    void PreFlop(Card card1, Card card2) throws IOException {
-        int smallBlind = 0;
-        int bigBlind = 0;
-        for (Player p : players) {
-            if (p.status.equals("SmallBLind")) {
-                smallBlind = p.bet;
-            }
-            if (p.status.equals("BigBlind")) {
-                bigBlind = p.bet;
-            }
-        }
-
-        if (arePair(card1, card2)) {
-            boolean doWeHaveBigPair = false;
-            for (int i = 10; i < allcards().size(); i++) {
-                if (card1.value.equals(allcards().get(i))) {
-                    doWeHaveBigPair = true;
-                    //if s.o. raise -> if raise >= balance -> call else -> if raise*3 > balance -> all in -> else pot*3
-                    //else -> if pot*2 > balance -> all in -> else -> rise pot*2
-                    if (howMuchHasSomeoneRaised(bigBlind) != 0) {
-                        hasEveryonesTurnBeen = true;
-                        if (howMuchHasSomeoneRaised(bigBlind) >= myPlayer().balance) {
-                            connection.sendMessage(Commands.Call.toString());
-                        } else {
-                            if (pot * 3 >= myPlayer().balance) {
-                                connection.sendMessage(Commands.AllIn.toString());
-                            } else {
-                                connection.sendMessage(Commands.Rise.toString() + "," + pot * 3);
-                            }
-                        }
-                        break;
-                    } else {
-                        hasEveryonesTurnBeen = true;
-                        howMuchToRaiseDependingOnPot();
-                        break;
-                    }
+    private void PreFlop(Card card1, Card card2) {
+        try {
+            int bigBlind = 0;
+            for (Player p : players) {
+                if (p.status.equals("BigBlind")) {
+                    bigBlind = p.bet;
                 }
             }
-            if (hasEveryonesTurnBeen) {
-                connection.sendMessage(Commands.Call.toString());
-            }
-            hasEveryonesTurnBeen = false;
-            //if s.o. raise -> if raise >= balance call else -> pot*2
-            //else -> if pot*2 >= balance -> call else -> pot*2
-            if (!doWeHaveBigPair) {
+
+            if (arePair(card1, card2)) {
+                boolean doWeHaveBigPair = false;
+                for (int i = 10; i < allcards().size(); i++) {
+                    if (card1.value.equals(allcards().get(i))) {
+                        doWeHaveBigPair = true;
+                        //if s.o. raise -> if raise >= balance -> call else -> if raise*3 > balance -> all in -> else pot*3
+                        //else -> if pot*2 > balance -> all in -> else -> rise pot*2
+                        if (howMuchHasSomeoneRaised(bigBlind) != 0) {
+                            hasEveryonesTurnBeen = true;
+                            if (howMuchHasSomeoneRaised(bigBlind) >= myPlayer().balance) {
+                                connection.sendMessage(Commands.Call.toString());
+                            } else {
+                                if (pot * 3 >= myPlayer().balance) {
+                                    connection.sendMessage(Commands.AllIn.toString());
+                                } else {
+                                    connection.sendMessage(Commands.Rise.toString() + "," + pot * 3);
+                                }
+                            }
+                            break;
+                        } else {
+                            hasEveryonesTurnBeen = true;
+                            howMuchToRaiseDependingOnPot();
+                            break;
+                        }
+                    }
+                }
+                if (hasEveryonesTurnBeen) {
+                    connection.sendMessage(Commands.Call.toString());
+                }
+                hasEveryonesTurnBeen = false;
+                //if s.o. raise -> if raise >= balance call else -> pot*2
+                //else -> if pot*2 >= balance -> call else -> pot*2
+                if (!doWeHaveBigPair) {
+                    if (howMuchHasSomeoneRaised(bigBlind) != 0) {
+                        connection.sendMessage(Commands.Call.toString());
+                    } else {
+                        howMuchToRaiseDependingOnPot();
+                    }
+                }
+            } else if (areSuit(card1, card2)) {
+                if (card1.value.equals(allcards().get(allcards().size() - 1)) || card2.value.equals(allcards().get(allcards().size() - 1))) {
+                    //if s.o. raise -> call
+                    //else raise pot*2
+                    if (howMuchHasSomeoneRaised(bigBlind) != 0) {
+                        connection.sendMessage(Commands.Call.toString());
+                    } else {
+                        howMuchToRaiseDependingOnPot();
+                    }
+                } else {
+                    boolean highCard = false;
+                    for (int i = 8; i < allcards().size(); i++) {
+                        if (card1.value.equals(allcards().get(i)) || card2.value.equals(allcards().get(i))) {
+                            highCard = true;
+                            if (howMuchHasSomeoneRaised(bigBlind) != 0) {
+                                connection.sendMessage(Commands.Call.toString());
+                                break;
+                            } else {
+                                howMuchToRaiseDependingOnPot();
+                            }
+                        }
+                    }
+                    if (!highCard) {
+                        checkIfNoOneRaisedToPlay();
+                    }
+                }
+
+            } else if (bothAreBiggerThan10()) {
+                //if no one raise -> raise pot*2, else -> call
                 if (howMuchHasSomeoneRaised(bigBlind) != 0) {
                     connection.sendMessage(Commands.Call.toString());
                 } else {
                     howMuchToRaiseDependingOnPot();
                 }
-            }
-        } else if (areSuit(card1, card2)) {
-            if (card1.value.equals(allcards().get(allcards().size() - 1)) || card2.value.equals(allcards().get(allcards().size() - 1))) {
+            } else if (areSequential(allcards(), card1, card2)) {
                 //if s.o. raise -> call
                 //else raise pot*2
                 if (howMuchHasSomeoneRaised(bigBlind) != 0) {
@@ -368,198 +354,223 @@ public class Client {
                     howMuchToRaiseDependingOnPot();
                 }
             } else {
-                boolean highCard = false;
-                for (int i = 8; i < allcards().size(); i++) {
-                    if (card1.value.equals(allcards().get(i)) || card2.value.equals(allcards().get(i))) {
-                        highCard = true;
+                switch (myPlayer().status) {
+                    case "SmallBlind":
+                        //if someone raise -> fold, else -> call
                         if (howMuchHasSomeoneRaised(bigBlind) != 0) {
-                            connection.sendMessage(Commands.Call.toString());
+                            connection.sendMessage(Commands.Check.toString());
                         } else {
-                            howMuchToRaiseDependingOnPot();
+                            connection.sendMessage(Commands.Call.toString());
                         }
-                    }
-                }
-                if (!highCard) {
-                    connection.sendMessage(Commands.Fold.toString());
+                        break;
+                    case "BigBlind":
+                        //if no one raise -> check else -> if raise is small -> call else -> fold
+                        if (howMuchHasSomeoneRaised(bigBlind) != 0 && myPlayer().balance - howMuchHasSomeoneRaised(bigBlind) > 500) {
+                            connection.sendMessage(Commands.Check.toString());
+                        } else {
+                            connection.sendMessage(Commands.Call.toString());
+                        }
+                        break;
+                    default:
+                        checkIfNoOneRaisedToPlay();
+                        break;
                 }
             }
-
-        } else if (bothAreBiggerThan10()) {
-            //if no one raise -> raise pot*2, else -> call
-            if (howMuchHasSomeoneRaised(bigBlind) != 0) {
-                connection.sendMessage(Commands.Call.toString());
-            } else {
-                howMuchToRaiseDependingOnPot();
-            }
-        } else if (areSequential(allcards(),card1,card2)) {
-            //if s.o. raise -> call
-            //else raise pot*2
-            if (howMuchHasSomeoneRaised(bigBlind) != 0) {
-                connection.sendMessage(Commands.Call.toString());
-            } else {
-                howMuchToRaiseDependingOnPot();
-            }
-        } else {
-            if (myPlayer().status.equals("SmallBlind")) {
-                //if someone raise -> fold, else -> call
-                if (howMuchHasSomeoneRaised(bigBlind) != 0) {
-                    connection.sendMessage(Commands.Fold.toString());
-                } else {
-                    connection.sendMessage(Commands.Call.toString());
-                }
-            } else if (myPlayer().status.equals("BigBlind")) {
-                //if no one raise -> check else -> if raise is small -> call else -> fold
-                if (howMuchHasSomeoneRaised(bigBlind) != 0 && myPlayer().balance - howMuchHasSomeoneRaised(bigBlind) > 500) {
-                    connection.sendMessage(Commands.Call.toString());
-                } else {
-                    connection.sendMessage(Commands.Check.toString());
-                }
-            } else
-                connection.sendMessage(Commands.Fold.toString());
+        }
+        catch (IOException e){
+            System.out.println("PreFlop exception");
+            System.out.println(e.getMessage());
         }
     }
 
-    void Flop(Card card1, Card card2) throws IOException {
-        int bigBlind = 0;
-        for (Player p : players) {
-            if (p.status.equals("BigBlind")) {
-                bigBlind = p.bet;
-            }
-        }
-
-        if (cardCombination.contains("Straight")) {
-            connection.sendMessage(Commands.AllIn.toString());
-        } else if (cardCombination.contains("Flash")) {
-            connection.sendMessage(Commands.AllIn.toString());
-        } else if (cardCombination.contains("Full house")) {
-            connection.sendMessage(Commands.AllIn.toString());
-        } else if (cardCombination.contains("Pair of")) {
-            if(arePair(card1, card2)){
-                int index = 0;
-                for(int i = 0; i < allcards().size(); i++){
-                   if(card1.value.equals(allcards().get(i))){
-                        index = i;
-                        break;
-                    }
-                }
-                boolean higherCardsOnFlopThanMine = false;
-                for(Card c : deskCards){
-                    for(int i = index; i < allcards().size(); i++){
-                        if(c.value.equals(allcards().get(i))){
-                            higherCardsOnFlopThanMine = true;
+    private void Flop(Card card1, Card card2){
+        try{
+                if (cardCombination.contains("Straight")) {
+                    connection.sendMessage(Commands.AllIn.toString());
+                } else if (cardCombination.contains("Four of")) {
+                    connection.sendMessage(Commands.AllIn.toString());
+                } else if (cardCombination.contains("Flash")) {
+                    connection.sendMessage(Commands.AllIn.toString());
+                } else if (cardCombination.contains("Full house")) {
+                    connection.sendMessage(Commands.AllIn.toString());
+                } else if (cardCombination.contains("Pair of")) {
+                    if(pairOnFlop()){
+                        if(checkForFlushCountCards(card1, card2) == 4){
+                            connection.sendMessage(Commands.Call.toString());
+                        }
+                        else{
+                            checkIfNoOneRaisedToPlay();
                         }
                     }
-                }
-                if(higherCardsOnFlopThanMine){
-                    howMuchHasSomeoneRaised(bigBlind);
-                }
-                else{
-                    connection.sendMessage(Commands.Call.toString());
-                }
-            }
-            else{
-                if(pairOnFlop()){
-                    connection.sendMessage(Commands.Check.toString());
-                }
-                else{
-                    if(playersThatAreNotFold() < 3){
+                    else{
+                        connection.sendMessage(Commands.Rise.toString() + "," + pot / 0.5);
+                    }
+                } else if (cardCombination.contains("Two pairs")) {
+                    if (pairOnFlop()) {
+                        if (playersThatAreNotFold() < 3) {
+                            howMuchToRaiseDependingOnPot();
+                        } else {
+                            connection.sendMessage(Commands.Call.toString());
+                        }
+                    } else {
+                        if (!arePair(card1, card2)) {
+                            connection.sendMessage(Commands.AllIn.toString());
+                        }
+                        else{
+                            connection.sendMessage(Commands.Rise.toString() + "," + pot / 0.5);
+                        }
+                    }
+                } else if (cardCombination.contains("Set of")) {
+                    ArrayList<String> cardsOnFlopValue = new ArrayList<>(3);
+                    for (Card c : deskCards) {
+                        cardsOnFlopValue.add(c.value);
+                    }
+                    if (cardsOnFlopValue.get(0).equals(cardsOnFlopValue.get(1)) && cardsOnFlopValue.get(0).equals(cardsOnFlopValue.get(2))) {
+                        connection.sendMessage(Commands.Call.toString());
+                    } else {
+                        if (arePair(card1, card2)) {
+                            connection.sendMessage(Commands.AllIn.toString());
+                        } else {
+                            if (card1.value.equals(allcards().get(allcards().size() - 1)) || card2.value.equals(allcards().get(allcards().size() - 1)) || card1.value.equals(allcards().get(allcards().size() - 2)) || card2.value.equals(allcards().get(allcards().size() - 2)) || card1.value.equals(allcards().get(allcards().size() - 3)) || card2.value.equals(allcards().get(allcards().size() - 3))) {
+                                connection.sendMessage(Commands.Rise.toString() + "," + pot / 0.5);
+                            } else {
+                                ArrayList<String> cards = new ArrayList<>();
+                                for(Card c : deskCards){
+                                    cards.add(c.value);
+                                }
+                                cards.add(card1.value);
+                                cards.add(card2.value);
+                                if(sequentialCards(cards) == 4 || checkForFlushCountCards(card1, card2) == 4){
+                                    connection.sendMessage(Commands.Call.toString());
+                                }
+                                else{
+                                    connection.sendMessage(Commands.Check.toString());
+                                }
+                            }
+                        }
+                    }
+                } else if (cardCombination.contains("High card")) {
+                    ArrayList<String> cards = new ArrayList<>();
+                    for(Card c : deskCards){
+                        cards.add(c.value);
+                    }
+                    cards.add(card1.value);
+                    cards.add(card2.value);
+                    if(sequentialCards(cards) == 4 || checkForFlushCountCards(card1, card2) == 4){
                         connection.sendMessage(Commands.Call.toString());
                     }
                     else{
-                        checkStraightOrFlush(card1, card2);
+                        connection.sendMessage(Commands.Check.toString());
                     }
                 }
-            }
-        } else if (cardCombination.contains("Two pairs")) {
-            if(pairOnFlop()){
-                if(playersThatAreNotFold() < 3){
-                    howMuchToRaiseDependingOnPot();
-                }
                 else{
-                    connection.sendMessage(Commands.Call.toString());
+                    checkIfNoOneRaisedToPlay();
                 }
             }
-            else{
-                if(!arePair(card1, card2)){
+             catch (IOException e){
+                System.out.println("Flop exception");
+                System.out.println(e.getMessage());
+            }
+        }
+
+    private void Turn(Card card1, Card card2, int bigBlind){
+            try {
+                if (cardCombination.contains("Straight")) {
                     connection.sendMessage(Commands.AllIn.toString());
-                }
-            }
-            connection.sendMessage(Commands.Rise.toString() + ",50");
-        } else if (cardCombination.contains("Set of")) {
-            ArrayList<String> cardsOnFlopValue = new ArrayList<>(3);
-            for(Card c : deskCards){
-                cardsOnFlopValue.add(c.value);
-            }
-            if(cardsOnFlopValue.get(0).equals(cardsOnFlopValue.get(1)) && cardsOnFlopValue.get(0).equals(cardsOnFlopValue.get(2))){
-                if(card1.value.equals(allcards().get(allcards().size()-1)) || card2.value.equals(allcards().get(allcards().size()-1))){
-                    connection.sendMessage(Commands.Call.toString());
-                }
-                else{
-                    checkStraightOrFlush(card1, card2);
-                }
-            }
-            else{
-                if(arePair(card1, card2)){
+                } else if (cardCombination.contains("Four of")) {
+                   checkForFourEqualCardsOnTable();
+                } else if (cardCombination.contains("Flash")) {
                     connection.sendMessage(Commands.AllIn.toString());
-                }
-                else{
-                    if(card1.value.equals(allcards().get(allcards().size()-1)) || card2.value.equals(allcards().get(allcards().size()-1)) || card1.value.equals(allcards().get(allcards().size()-2)) || card2.value.equals(allcards().get(allcards().size()-2)) || card1.value.equals(allcards().get(allcards().size()-3)) || card2.value.equals(allcards().get(allcards().size()-3))){
-                        connection.sendMessage(Commands.Rise.toString()+","+ pot/0.5);
+                } else if (cardCombination.contains("Full house")) {
+                    connection.sendMessage(Commands.AllIn.toString());
+                } else if (cardCombination.contains("Pair of")) {
+                    checkForPairOnTable(card1, card2, bigBlind);
+                } else if (cardCombination.contains("Two pairs")) {
+                    //if the pairs are on table
+                    checkIfTwoPairsOnTable(card1, card2);
+                } else if (cardCombination.contains("Set of")) {
+                    //if set is on table
+                    checkForSetOnTable();
+                } else if (cardCombination.contains("High card")) {
+                    ArrayList<String> cards = new ArrayList<>();
+                    for(Card c : deskCards){
+                        cards.add(c.value);
                     }
-                    else{
+                    cards.add(card1.value);
+                    cards.add(card2.value);
+                    if(sequentialCards(cards) == 4 || checkForFlushCountCards(card1, card2) == 4){
                         connection.sendMessage(Commands.Call.toString());
                     }
+                    else{
+                        connection.sendMessage(Commands.Check.toString());
+                    }
+                }
+                else{
+                    checkIfNoOneRaisedToPlay();
                 }
             }
-        } else  if (cardCombination.contains("High card")) {
-                    checkStraightOrFlush(card1, card2);
+            catch (IOException e){
+                System.out.println("TURN Exception");
+                System.out.println(e.getMessage());
             }
         }
 
-        void Turn() throws IOException {
-            if (cardCombination.contains("Straight")) {
-                connection.sendMessage(Commands.AllIn.toString());
-            } else if (cardCombination.contains("Flash")) {
-                connection.sendMessage(Commands.AllIn.toString());
-            } else if (cardCombination.contains("Full house")) {
-                connection.sendMessage(Commands.AllIn.toString());
-            } else if (cardCombination.contains("Pair of")) {
-                //TODO
-                connection.sendMessage(Commands.Rise.toString() + ",50");
-            } else if (cardCombination.contains("Two pairs")) {
-                //TODO
-                connection.sendMessage(Commands.Rise.toString() + ",50");
-            } else if (cardCombination.contains("Set of")) {
-                //TODO
-                connection.sendMessage(Commands.AllIn.toString());
-            } else  if (cardCombination.contains("High card")) {
-                //TODO
-                connection.sendMessage(Commands.Check.toString());
+         private void River(Card card1, Card card2, int bigBlind){
+            try {
+                if (cardCombination.contains("Straight")) {
+                    //TODO check if straight is on the table
+                    connection.sendMessage(Commands.Call.toString());
+                } else if (cardCombination.contains("Four of")) {
+                    checkForFourEqualCardsOnTable();
+                } else if (cardCombination.contains("Flash")) {
+                    checkForFlashOnTheTable();
+                } else if (cardCombination.contains("Full house")) {
+                    checkForFulHouseOnTable();
+                } else if (cardCombination.contains("Pair of")) {
+                    checkForPairOnTable(card1, card2, bigBlind);
+                } else if (cardCombination.contains("Two pairs")) {
+                    checkIfTwoPairsOnTable(card1, card2);
+                } else if (cardCombination.contains("Set of")) {
+                    checkForSetOnTable();
+                } else if (cardCombination.contains("High card")) {
+                    checkIfNoOneRaisedToPlay();
+                }
+            }
+            catch (IOException e){
+                System.out.println("River exception");
+                System.out.println(e.getMessage());
             }
         }
 
-        void River() throws IOException {
-            if (cardCombination.contains("Pair of")) {
-                //TODO
-                connection.sendMessage(Commands.Rise.toString() + ",50");
-            } else if (cardCombination.contains("Two pairs")) {
-                //TODO
-                connection.sendMessage(Commands.Rise.toString() + ",50");
-            } else if (cardCombination.contains("Set of")) {
-                connection.sendMessage(Commands.AllIn.toString());
-            } else if (cardCombination.contains("Straight")) {
-                connection.sendMessage(Commands.AllIn.toString());
-            } else if (cardCombination.contains("Flash")) {
-                connection.sendMessage(Commands.AllIn.toString());
-            } else if (cardCombination.contains("Full house")) {
-                connection.sendMessage(Commands.AllIn.toString());
-            } else if (cardCombination.contains("High card")) {
-                connection.sendMessage(Commands.Check.toString());
+         private void Final(Card card1, Card card2, int bigBlind){
+            try {
+                if (cardCombination.contains("Straight")) {
+                    //todo
+                    connection.sendMessage(Commands.AllIn.toString());
+                } else if (cardCombination.contains("Four of")) {
+                    checkForFourEqualCardsOnTable();
+                } else if (cardCombination.contains("Flash")) {
+                    checkForFlashOnTheTable();
+                } else if (cardCombination.contains("Full house")) {
+                    checkForFulHouseOnTable();
+                } else if (cardCombination.contains("Pair of")) {
+                    checkForPairOnTable(card1, card2, bigBlind);
+                } else if (cardCombination.contains("Two pairs")) {
+                    checkIfTwoPairsOnTable(card1, card2);
+                } else if (cardCombination.contains("Set of")) {
+                    checkForSetOnTable();
+                } else if (cardCombination.contains("High card")) {
+                    checkIfNoOneRaisedToPlay();
+                }
+            }
+            catch (IOException e){
+                System.out.println("final exception");
+                System.out.println(e.getMessage());
             }
         }
 
 
-    ArrayList<String> allcards(){
+    private ArrayList<String> allcards(){
         //list of all cards
         ArrayList<String> allcards = new ArrayList<>(13);
         allcards.add("2");
@@ -578,23 +589,17 @@ public class Client {
         return allcards;
     }
 
-    boolean arePair(Card card1, Card card2){
+    private boolean arePair(Card card1, Card card2){
         //if our cards are pair (22,33,44,55,66,...,KK,AA)
-        if (card1.value.equals(card2.value)) {
-            return true;
-        }
-        return false;
+        return card1.value.equals(card2.value);
     }
 
-    boolean areSuit(Card card1, Card card2){
+    private boolean areSuit(Card card1, Card card2){
         //if our cards are same color
-        if (card1.suit.equals(card2.suit)) {
-            return true;
-        }
-        return false;
+        return card1.suit.equals(card2.suit);
     }
 
-    boolean areSequential(ArrayList<String> allcards, Card card1, Card card2){
+    private boolean areSequential(ArrayList<String> allcards, Card card1, Card card2){
         //if our cards are sequential (45,78,10J,KA,A2);
         for (int i = 0; i < allcards.size(); i++) {
             if (i != 0 && i != allcards.size() - 1) {
@@ -632,7 +637,7 @@ public class Client {
         return false;
     }
 
-    boolean bothAreBiggerThan10(){
+    private boolean bothAreBiggerThan10(){
         //if two of our cards are bigger than 10
         int counter = 0;
         for(Card c : myPlayer().cards){
@@ -640,13 +645,10 @@ public class Client {
                 counter++;
             }
         }
-        if(counter == 2){
-            return true;
-        }
-        return false;
+        return counter == 2;
     }
 
-    int howMuchHasSomeoneRaised(int bigBlind){
+    private int howMuchHasSomeoneRaised(int bigBlind){
         int otherBetRaise = 0;
         for (Player p : players) {
             if (!p.name.equals(myPlayer().name)) {
@@ -658,7 +660,7 @@ public class Client {
         return otherBetRaise;
     }
 
-    void howMuchToRaiseDependingOnPot() throws IOException {
+    private void howMuchToRaiseDependingOnPot() throws IOException {
         if (pot * 2 >= myPlayer().balance) {
             connection.sendMessage(Commands.Call.toString());
         } else {
@@ -666,7 +668,7 @@ public class Client {
         }
     }
 
-    int playersThatAreNotFold(){
+    private int playersThatAreNotFold(){
         int counter = 0;
         for(Player p : players){
             if(p.status.equalsIgnoreCase("fold")){
@@ -676,20 +678,23 @@ public class Client {
         return counter;
     }
 
-    boolean pairOnFlop(){
+    private boolean pairOnFlop(){
         ArrayList<String> cardsOnFlopValue = new ArrayList<>(3);
         for(Card c : deskCards){
             cardsOnFlopValue.add(c.value);
         }
-        if(cardsOnFlopValue.get(0).equals(cardsOnFlopValue.get(1)) || cardsOnFlopValue.get(0).equals(cardsOnFlopValue.get(2)) || cardsOnFlopValue.get(2).equals(cardsOnFlopValue.get(1))){
-           return true;
-        }
-        else{
-            return false;
-        }
+        return cardsOnFlopValue.get(0).equals(cardsOnFlopValue.get(1)) || cardsOnFlopValue.get(0).equals(cardsOnFlopValue.get(2)) || cardsOnFlopValue.get(2).equals(cardsOnFlopValue.get(1));
     }
 
-    int checkForFlushCountCards(Card card1, Card card2){
+    private boolean pairOnTable() {
+        ArrayList<String> cardsOnFlopValue = new ArrayList<>(5);
+        for (Card c : deskCards) {
+            cardsOnFlopValue.add(c.value);
+        }
+        return (cardsOnFlopValue.get(0).equals(cardsOnFlopValue.get(3)) || cardsOnFlopValue.get(0).equals(cardsOnFlopValue.get(4)) || cardsOnFlopValue.get(3).equals(cardsOnFlopValue.get(1)) || cardsOnFlopValue.get(1).equals(cardsOnFlopValue.get(4)) || cardsOnFlopValue.get(2).equals(cardsOnFlopValue.get(3)) || cardsOnFlopValue.get(2).equals(cardsOnFlopValue.get(4)) || cardsOnFlopValue.get(3).equals(cardsOnFlopValue.get(4))) && pairOnFlop();
+    }
+
+    private int checkForFlushCountCards(Card card1, Card card2){
         int suitCounterWhenWeHaveSuit = 0;
         int suitCounterForCard1 = 0;
         int suitCounterForCard2 = 0;
@@ -721,85 +726,458 @@ public class Client {
         }
     }
 
-    int checkForStraightCounter(Card card1, Card card2) {
+    private int checkForStraightCounter(Card card1, Card card2) {
         int areSequentialCounter = 0;
         for (Card c : deskCards) {
             if (areSequential(allcards(), card1, card2)) {
                 for (int i = 0; i < allcards().size(); i++) {
-                    if (card1.value.toString().equals(allcards().get(i))) {
+                    if (card1.value.equals(allcards().get(i))) {
                         if (i != allcards().size() - 1) {
-                            if (allcards().get(i + 1).equals(c.value)) {
+                            if (allcards().get(i + 1).equals(c.value))
                                 areSequentialCounter++;
-                            }
                         } else {
-                            if (allcards().get(0).equals(c.value)) {
+                            if (allcards().get(0).equals(c.value))
                                 areSequentialCounter++;
-                            }
+                        }
+                    }
+                    if (card1.value.toString().equals(allcards().get(i))) if (i != 0) {
+                        if (allcards().get(i - 1).equals(c.value))
+                            areSequentialCounter++;
+                        else {
+                            if (allcards().get(allcards().size() - 1).equals(c.value))
+                                areSequentialCounter++;
                         }
                     }
                     if (card2.value.toString().equals(allcards().get(i))) {
-                        if (i != allcards().size() - 1) {
-                            if (allcards().get(i + 1).equals(c.value)) {
-                                areSequentialCounter++;
-                            }
+                        if (i != allcards().size() - 1 && allcards().get(i + 1).equals(c.value)) {
+                            areSequentialCounter++;
                         } else {
-                            if (allcards().get(0).equals(c.value)) {
+                            if (allcards().get(0).equals(c.value))
                                 areSequentialCounter++;
-                            }
-                        }
-                    }
-                    if (card1.value.toString().equals(allcards().get(i))) {
-                        if (i != 0) {
-                            if (allcards().get(i - 1).equals(c.value)) {
-                                areSequentialCounter++;
-                            }
-                        } else {
-                            if (allcards().get(allcards().size() - 1).equals(c.value)) {
-                                areSequentialCounter++;
-                            }
-                        }
-                    }
-                    if (card2.value.toString().equals(allcards().get(i))) {
-                        if (i != 0) {
-                            if (allcards().get(i - 1).equals(c.value)) {
-                                areSequentialCounter++;
-                            }
-                        } else {
-                            if (allcards().get(allcards().size() - 1).equals(c.value)) {
-                                areSequentialCounter++;
-                            }
                         }
                     }
                 }
             }
+
+
         }
         return areSequentialCounter+2;
     }
 
-    public void checkStraightOrFlush(Card card1, Card card2) throws IOException {
-        //if you wait for 2 more cards for flush
-        // if two players && A -> pay
-        // else -> folds
-        if(checkForFlushCountCards(card1, card2) == 3){
-            if(card1.value.equals(allcards().get(allcards().size()-1)) || card1.value.equals(allcards().get(allcards().size()-1))){
+    private void checkStraightOrFlush(Card card1, Card card2) throws IOException {
+        if (gameRound.equals("THREE_CARDS")) {
+            //if you wait for 2 more cards for flush
+            // if two players && A -> pay
+            // else -> folds
+            if (checkForFlushCountCards(card1, card2) == 3) {
+                if (card1.value.equals(allcards().get(allcards().size() - 1)) || card1.value.equals(allcards().get(allcards().size() - 1))) {
+                    connection.sendMessage(Commands.Call.toString());
+                } else {
+                    checkIfNoOneRaisedToPlay();
+                }
+            } else if (checkForFlushCountCards(card1, card2) == 4) {
                 connection.sendMessage(Commands.Call.toString());
+            } else
+                //if you wait for 2 cards for straight->fold
+                //wait for 1 -> call
+                if (checkForStraightCounter(card1, card2) == 4) {
+                    connection.sendMessage(Commands.Call.toString());
+                } else {
+                    checkIfNoOneRaisedToPlay();
+                }
+        }
+        else{
+            if(gameRound.equals("FOUR_CARDS")){
+                if (checkForFlushCountCards(card1, card2) == 4) {
+                    if (card1.value.equals(allcards().get(allcards().size() - 1)) || card1.value.equals(allcards().get(allcards().size() - 1))) {
+                        connection.sendMessage(Commands.Call.toString());
+                    }
+                    else{
+                        checkIfNoOneRaisedToPlay();
+                    }
+                }
+                else{
+                    if (checkForStraightCounter(card1, card2) == 4) {
+                        connection.sendMessage(Commands.Call.toString());
+                    } else {
+                        checkIfNoOneRaisedToPlay();
+                    }
+                }
             }
             else{
-                connection.sendMessage(Commands.Fold.toString());
+                if(gameRound.equals("FIVE_CARDS")){
+                    checkIfNoOneRaisedToPlay();
+                }
             }
         }
-        else
-        if(checkForFlushCountCards(card1, card2) == 4){
-            connection.sendMessage(Commands.Call.toString());
-        }
-        else
-            //if you wait for 2 cards for straight->fold
-            //wait for 1 -> call
-            if(checkForStraightCounter(card1, card2) == 2){
-                connection.sendMessage(Commands.Call.toString());
-            }
-            else{
-                connection.sendMessage(Commands.Fold.toString());
-            }
     }
+
+    private void checkForFourEqualCardsOnTable(){
+        try {
+            if(gameRound.equals("FOUR_CARDS")) {
+                ArrayList<String> cardsOnDesk = new ArrayList<>(4);
+                for (Card c : deskCards) {
+                    cardsOnDesk.add(c.value);
+                }
+                if (cardsOnDesk.get(0).equals(cardsOnDesk.get(1)) && cardsOnDesk.get(1).equals(cardsOnDesk.get(2)) && cardsOnDesk.get(2).equals(cardsOnDesk.get(3))) {
+                    checkIfNoOneRaisedToPlay();
+                } else {
+                    connection.sendMessage(Commands.AllIn.toString());
+                }
+            }
+            if(gameRound.equals("FIVE_CARDS")){
+                ArrayList<String> cardsOnDesk = new ArrayList<>(5);
+                for (Card c : deskCards) {
+                    cardsOnDesk.add(c.value);
+                }
+                if (cardsOnDesk.get(0).equals(cardsOnDesk.get(1)) && cardsOnDesk.get(1).equals(cardsOnDesk.get(2)) && cardsOnDesk.get(2).equals(cardsOnDesk.get(3)) && cardsOnDesk.get(3).equals(cardsOnDesk.get(4))) {
+                    checkIfNoOneRaisedToPlay();
+                } else {
+                    connection.sendMessage(Commands.AllIn.toString());
+                }
+            }
+        }
+        catch(IOException e){
+            System.out.println("checkForFourEqualCardsOnTable");
+            System.out.println(e.getMessage());
+        }
+    }
+
+    private void checkForFlashOnTheTable(){
+        try {
+            ArrayList<String> cardsOnDesk = new ArrayList<>(5);
+            for (Card c : deskCards) {
+                cardsOnDesk.add(c.suit);
+            }
+            if (cardsOnDesk.get(0).equals(cardsOnDesk.get(1)) && cardsOnDesk.get(1).equals(cardsOnDesk.get(2)) && cardsOnDesk.get(2).equals(cardsOnDesk.get(3)) && cardsOnDesk.get(3).equals(cardsOnDesk.get(4))) {
+                checkIfNoOneRaisedToPlay();
+            } else {
+                connection.sendMessage(Commands.AllIn.toString());
+            }
+        }
+        catch(IOException e){
+            System.out.println("checkForFlashOnTheTable");
+            System.out.println(e.getMessage());
+        }
+    }
+
+    private void checkForSetOnTable(){
+        try {
+            if(gameRound.equals("FOUR_CARDS")) {
+                ArrayList<String> cardsOnDesk = new ArrayList<>(4);
+                for (Card c : deskCards) {
+                    cardsOnDesk.add(c.value);
+                }
+                if ((cardsOnDesk.get(0).equals(cardsOnDesk.get(1)) && cardsOnDesk.get(0).equals(cardsOnDesk.get(2))) || (cardsOnDesk.get(0).equals(cardsOnDesk.get(1)) && cardsOnDesk.get(0).equals(cardsOnDesk.get(3))) || (cardsOnDesk.get(0).equals(cardsOnDesk.get(2)) && cardsOnDesk.get(0).equals(cardsOnDesk.get(3))) || (cardsOnDesk.get(1).equals(cardsOnDesk.get(2)) && cardsOnDesk.get(2).equals(cardsOnDesk.get(3)))) {
+                    checkIfNoOneRaisedToPlay();
+                } else {
+                    connection.sendMessage(Commands.AllIn.toString());
+                }
+            }
+            if(gameRound.equals("FIVE_CARDS")) {
+                //TODO
+            }
+        }
+        catch(IOException e){
+            System.out.println("checkForSetOnTable");
+            System.out.println(e.getMessage());
+        }
+    }
+
+    private void checkIfTwoPairsOnTable(Card card1, Card card2){
+        try {
+            if(arePair(card1, card2)){
+                connection.sendMessage(Commands.Rise.toString() + "," + pot/2);
+            }
+            else{
+                int counter = 0;
+                for(Card c : deskCards){
+                    if(card1.value.equals(c.value)){
+                        counter++;
+                    }
+                    if(card2.value.equals(c.value)){
+                        counter++;
+                    }
+                }
+                if(counter == 2){
+                    connection.sendMessage(Commands.AllIn.toString());
+                }
+                else{
+                    checkIfNoOneRaisedToPlay();
+                }
+            }
+        }
+        catch(IOException e){
+            System.out.println("checkIfTwoPairsOnTable");
+            System.out.println(e.getMessage());
+        }
+    }
+
+    private void checkForPairOnTable(Card card1, Card card2, int bigBlind){
+        try {
+            ArrayList<String> valuesOnTable = new ArrayList<>(5);
+            for(Card c : deskCards){
+                valuesOnTable.add(c.value);
+            }
+            if (arePair(card1, card2)) {
+                //check if our pair is higher than all cards on table
+                int ourCardIndex = 0;
+                int card1Index = 0;
+                int card2Index = 0;
+                int card3Index = 0;
+                int card4Index = 0;
+                int card5Index = 0;
+                for(int i = 0; i < allcards().size(); i++){
+                    if(card1.value.equals(allcards().get(i))){
+                        ourCardIndex = i;
+                    }
+                    if(valuesOnTable.get(0).equals(allcards().get(i))){
+                        card1Index = i;
+                    }
+                    if(valuesOnTable.get(1).equals(allcards().get(i))){
+                        card2Index = i;
+                    }
+                    if(valuesOnTable.get(2).equals(allcards().get(i))){
+                        card3Index = i;
+                    }
+                    if(valuesOnTable.get(3).equals(allcards().get(i))){
+                        card4Index = i;
+                    }
+                    if(gameRound.equals("FIVE_CARDS")){
+                        card5Index = i;
+                    }
+                }
+                if(gameRound.equals("FOUR_CARDS")) {
+                    if (ourCardIndex > card1Index && ourCardIndex > card2Index && ourCardIndex > card3Index && ourCardIndex > card4Index) {
+                        connection.sendMessage(Commands.Rise.toString() + "," + pot / 2);
+                    } else {
+
+                        if (howMuchHasSomeoneRaised(bigBlind) >= myPlayer().balance) {
+                            connection.sendMessage(Commands.Call.toString());
+                        } else {
+                            if (pot * 3 >= myPlayer().balance) {
+                                connection.sendMessage(Commands.AllIn.toString());
+                            } else {
+                                connection.sendMessage(Commands.Rise.toString() + "," + pot * 3);
+                            }
+                        }
+                    }
+                }
+                if(gameRound.equals("FIVE_CARDS")) {
+                    if (ourCardIndex > card1Index && ourCardIndex > card2Index && ourCardIndex > card3Index && ourCardIndex > card4Index && ourCardIndex > card5Index) {
+                        connection.sendMessage(Commands.Rise.toString() + "," + pot / 2);
+                    } else {
+                        connection.sendMessage(Commands.Call.toString());
+                    }
+                }
+            } else {
+                //if pair on table
+                //if one card in our hand
+                if(valuesOnTable.get(0).equals(valuesOnTable.get(1)) || valuesOnTable.get(0).equals(valuesOnTable.get(2)) || valuesOnTable.get(0).equals(valuesOnTable.get(3)) || valuesOnTable.get(1).equals(valuesOnTable.get(2)) || valuesOnTable.get(1).equals(valuesOnTable.get(3)) || valuesOnTable.get(2).equals(valuesOnTable.get(3))){
+                    checkIfNoOneRaisedToPlay();
+                }
+                else{
+                    connection.sendMessage(Commands.Rise.toString() + "," + pot/2);
+                }
+            }
+        }
+        catch(IOException e){
+            System.out.println("checkForPairOnTable");
+            System.out.println(e.getMessage());
+        }
+    }
+
+    private void checkForFulHouseOnTable() throws IOException {
+        ArrayList<String> cardsOnDesk = new ArrayList<>(5);
+        for (Card c : deskCards) {
+            cardsOnDesk.add(c.value);
+        }
+        if (((cardsOnDesk.get(0).equals(cardsOnDesk.get(1)) && cardsOnDesk.get(0).equals(cardsOnDesk.get(2))) || (cardsOnDesk.get(0).equals(cardsOnDesk.get(1)) && cardsOnDesk.get(0).equals(cardsOnDesk.get(3))) || (cardsOnDesk.get(0).equals(cardsOnDesk.get(2)) && cardsOnDesk.get(0).equals(cardsOnDesk.get(3))) || (cardsOnDesk.get(1).equals(cardsOnDesk.get(2)) && cardsOnDesk.get(2).equals(cardsOnDesk.get(3))) || (cardsOnDesk.get(0).equals(cardsOnDesk.get(3)) && cardsOnDesk.get(0).equals(cardsOnDesk.get(4))) || (cardsOnDesk.get(1).equals(cardsOnDesk.get(3)) && cardsOnDesk.get(4).equals(cardsOnDesk.get(3))) || (cardsOnDesk.get(3).equals(cardsOnDesk.get(2)) && cardsOnDesk.get(2).equals(cardsOnDesk.get(4))) || (cardsOnDesk.get(0).equals(cardsOnDesk.get(1)) && cardsOnDesk.get(1).equals(cardsOnDesk.get(4)))) && pairOnFlop()) {
+            if(pairOnTable()) {
+                checkIfNoOneRaisedToPlay();
+            }
+        } else {
+            connection.sendMessage(Commands.AllIn.toString());
+        }
+    }
+
+    private void checkIfNoOneRaisedToPlay() throws IOException {
+        //TODO
+//        boolean noOneRaised = false;
+//        if(event.contains("All in") || event.contains("bet")){
+//            noOneRaised = true;
+//        }
+//        if(!noOneRaised){
+//            connection.sendMessage(Commands.Call.toString());
+//        }
+//        else {
+//            connection.sendMessage(Commands.Check.toString());
+//        }
+        connection.sendMessage(Commands.Check.toString());
+    }
+
+    private static List<String> cardsOrder = Arrays.asList("A","2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A");
+    //returns sorted list of sequential card indexes
+    public static int sequentialCards(List<String> cards){
+        boolean isSequential = false;
+        int countConsequalCards = 0;
+        ArrayList<Integer> sequentialCardIndexes = new ArrayList<>();
+
+        for(int i = 0; i < cards.size()-1; i++){
+            int card1Index = cardsOrder.indexOf(cards.get(i));
+
+            // System.out.println("i: "+i+"\ncard 1: " + card1Index);
+
+            for(int j = i+1; j < cards.size(); j++){
+                int card2Index = cardsOrder.indexOf(cards.get(j));
+
+                //    System.out.println("card 2: " + card2Index);
+
+                if(card1Index == card2Index) {
+                    continue;
+                }
+
+                else if(card1Index == 0 || card2Index == 0) {
+                    if (card1Index == 0) {
+                        card1Index = aceCalculation(card1Index, card2Index);
+                    }
+                    else if(card2Index == 0) {
+                        card2Index = aceCalculation(card1Index, card2Index);
+                    }
+                    if(!sequentialCardIndexes.contains(card1Index) && card1Index != -1) {
+                        sequentialCardIndexes.add(card1Index);
+                    }
+                    if(!sequentialCardIndexes.contains(card2Index) && card2Index != -1) {
+                        sequentialCardIndexes.add(card2Index);
+                    }
+                }
+
+                else  if(card1Index-card1Index == 1 || card1Index-card2Index == -1) {
+                    if(!sequentialCardIndexes.contains(card1Index)) {
+                        sequentialCardIndexes.add(card1Index);
+                    }
+                    if(!sequentialCardIndexes.contains(card2Index)) {
+                        sequentialCardIndexes.add(card2Index);
+                    }
+
+                }
+
+            }
+        }
+
+
+        Collections.sort(sequentialCardIndexes);
+        System.out.println("Sequential Card Indexes: ");
+        System.out.println(sequentialCardIndexes);
+        return sequentialListOfIndexes(sequentialCardIndexes).size();
+    }
+
+    // parameter of this method is list of card indexes, it returns the longest sequence of card indexes, as an arrayList
+    public static ArrayList<Integer> longestSequentialCardIndexes(ArrayList<Integer> cardIntexes){
+        ArrayList<ArrayList<Integer>> matrixOfIndexes = new ArrayList<>();
+        int startIndex = 0;
+        int endIndex = 0;
+        for(int i = 0; i < cardIntexes.size()-1; i ++){
+
+            if(i == cardIntexes.size()-2 || cardIntexes.get(i+1) - cardIntexes.get(i) != 1){
+                ArrayList<Integer> temp = new ArrayList<>();
+                temp.add(startIndex);
+                if(i == cardIntexes.size()-2){
+                    endIndex= cardIntexes.size()-1;
+                }
+                temp.add(endIndex);
+                temp.add(endIndex-startIndex+1);
+
+                matrixOfIndexes.add(temp);
+                startIndex = i+1;
+            }
+            else  if(cardIntexes.get(i+1) - cardIntexes.get(i) == 1){
+                endIndex = i+1;
+            }
+
+
+        }
+
+        ArrayList<Integer> biggestSequel = new ArrayList<>();
+        ArrayList<Integer> biggestSequelIndexes = biggestSequence(matrixOfIndexes);
+        if(!biggestSequelIndexes.isEmpty()) {
+            for (int i = biggestSequelIndexes.get(0); i <= biggestSequelIndexes.get(1); i++) {
+                biggestSequel.add(cardIntexes.get(i));
+            }
+        }
+        return biggestSequel;
+    }
+
+
+    //calculates on which indexes the cards have greater sequence  { (1,3,2) } -> {(startIdx, endIdx, startIdx-endIdx+1)}
+    private static ArrayList<Integer> biggestSequence(ArrayList<ArrayList<Integer>> values){
+        int maxElement = 0;
+        int index = -1;
+
+
+        for(int i = 0; i < values.size(); i ++){
+            int startEndCalculation = values.get(i).get(2);
+            if(startEndCalculation == 1){
+                continue;
+            }
+            if(startEndCalculation > maxElement){
+                maxElement = startEndCalculation;
+                index = i;
+            }
+        }
+
+        if(index == -1){
+            return new ArrayList<>();
+        }
+        return values.get(index);
+    }
+
+
+    private static ArrayList<Integer> sequentialListOfIndexes(ArrayList<Integer> cardIndexes){
+        Collections.sort(cardIndexes);
+        ArrayList<Integer> newList = new ArrayList<>();
+
+        for(int i = 0; i < cardIndexes.size()-1; i++){
+            int cardIndexCalculation = cardIndexes.get(i) - cardIndexes.get(i+1);
+            if(cardIndexCalculation == 1 || cardIndexCalculation == -1){
+                if(!newList.contains(cardIndexes.get(i))) {
+                    newList.add(cardIndexes.get(i));
+                }
+                if(!newList.contains(cardIndexes.get(i+1))) {
+                    newList.add(cardIndexes.get(i + 1));
+                }
+            }
+        }
+
+        System.out.println("****************************");
+        System.out.println(longestSequentialCardIndexes(newList));
+        return longestSequentialCardIndexes(newList);
+
+    }
+
+
+    //returns true if ace in the sequence
+    private static int aceCalculation(int card1, int card2){
+        int aceAtBeginning = card1 - card2;
+        if(card1 == 0 ) {
+            int aceAtEnd = cardsOrder.size()-1 - card2;
+            if (aceAtBeginning == 1 || aceAtBeginning == -1) {
+                return 0;
+            }
+            else if(aceAtEnd == 1){
+                return cardsOrder.size()-1;
+            }
+        }
+        if(card2 == 0 ) {
+            int aceAtEnd = cardsOrder.size()-1 - card1;
+            if (aceAtBeginning == 1 || aceAtBeginning == -1) {
+                return 0;
+            }
+            else if(aceAtEnd == 1 || aceAtEnd == -1){
+                return cardsOrder.size()-1;
+            }
+        }
+        return -1;
+    }
+
 }
